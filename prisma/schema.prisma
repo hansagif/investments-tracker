@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ─── Daily ingestion entry — one row per day ─────────────────────────────────
+// Replaces the separate ClosingSnapshot + ManualTotals tables.
+// All four inputs from the ingestion page are stored together.
+model DailyEntry {
+  id                    String   @id @default(cuid())
+  date                  String   @unique    // ISO 8601 "YYYY-MM-DD"
+
+  // 1. Total RON deposited since account opening (cumulative, user-entered)
+  totalDepositedRON     Float    @default(0)
+
+  // 2. Free RON in XTB account (not deployed in USD or EUR, user-entered)
+  freeRON               Float    @default(0)
+
+  // 3. Total ETF value in EUR (deposits + profit, user-entered)
+  etfValueEUR           Float    @default(0)
+
+  // 3b. EUR amount originally deposited into ETF (cumulative, user-entered once)
+  etfDepositedEUR       Float    @default(0)
+
+  // 4. From XTB screenshot — USD account totals
+  usdTotalValue         Float    @default(0)   // stocks + unused USD cash
+  usdFreeFunds          Float    @default(0)   // unused USD cash inside XTB
+  usdNetProfitLoss      Float    @default(0)   // P&L on currently OPEN positions (from screenshot)
+  usdRealizedPnl        Float    @default(0)   // cumulative P&L from SOLD/closed positions (manual, carries forward)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Daily snapshot of individual asset values (for historical charts)
+model AssetSnapshot {
+  id           String   @id @default(cuid())
+  date         String   // ISO 8601 "YYYY-MM-DD"
+  ticker       String
+  currentValue Float
+  currentPrice Float    @default(0)
+  avgBuyPrice  Float    @default(0)
+
+  @@unique([date, ticker])
+  @@index([ticker])
+}
+
+// Keep for backward compatibility during migration
+model ClosingSnapshot {
+  id                    String   @id @default(cuid())
+  date                  String   @unique
+  totalTransactionValue Float
+  freeFunds             Float
+  netProfitLoss         Float
+  currency              String   @default("USD")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Singleton row for manual totals (legacy — superseded by DailyEntry)
+model ManualTotals {
+  id                String   @id @default("singleton")
+  totalDepositedRON Float    @default(0)
+  etfValueEUR       Float    @default(0)
+  updatedAt         DateTime @updatedAt
+}
+
+model Asset {
+  id           String   @id @default(cuid())
+  ticker       String   @unique
+  name         String   @default("")
+  type         String   // "Stock" | "ETF"
+  sector       String   // one of sector taxonomy values
+  currentValue Float    // Valoare — total current USD value of position
+  costBasis    Float    // Pret deschidere — avg price per share paid (buy price)
+  currentPrice Float    @default(0) // Pret actual — current price per share
+  currency     String   // "USD" | "EUR" | "RON"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model RateCache {
+  id        String   @id @default("singleton")
+  ronUsd    Float
+  ronEur    Float
+  fetchedAt DateTime
+}
+
+model NewsCache {
+  id          String   @id    // hash of article URL
+  headline    String
+  source      String
+  publishedAt DateTime
+  url         String
+  tags        String          // JSON-encoded string[]
+  score       Float
+  cachedAt    DateTime @default(now())
+}
