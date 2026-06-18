@@ -125,6 +125,7 @@ export function Forecast() {
     ]);
     const [principal, setPrincipal] = React.useState<number>(0);
     const [loadingPrincipal, setLoadingPrincipal] = React.useState(true);
+    const [ronEur, setRonEur] = React.useState<number | null>(null);
 
     // Check whether any snapshots exist and derive current principal (req 6.4)
     React.useEffect(() => {
@@ -143,6 +144,14 @@ export function Forecast() {
             })
             .catch(() => setPrincipal(0))
             .finally(() => setLoadingPrincipal(false));
+
+        // Fetch live RON/EUR rate for EUR conversion
+        fetch("/api/rates")
+            .then(r => r.json())
+            .then((d: { rates?: { RON_EUR?: number } }) => {
+                if (d.rates?.RON_EUR) setRonEur(d.rates.RON_EUR);
+            })
+            .catch(() => {});
     }, []);
 
     const hasSnapshots = principal > 0;
@@ -374,14 +383,11 @@ export function Forecast() {
                                 width={60}
                             />
                             <Tooltip
-                                formatter={(value: number, name: string) => [
-                                    new Intl.NumberFormat("ro-RO", {
-                                        style: "currency",
-                                        currency: "RON",
-                                        maximumFractionDigits: 0,
-                                    }).format(value),
-                                    name,
-                                ]}
+                                formatter={(value: number, name: string) => {
+                                    const ron = new Intl.NumberFormat("ro-RO", { style: "currency", currency: "RON", maximumFractionDigits: 0 }).format(value);
+                                    const eur = ronEur ? ` / ${new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(value / ronEur)}` : "";
+                                    return [`${ron}${eur}`, name];
+                                }}
                                 labelFormatter={(label) => `Year ${label}`}
                                 contentStyle={{
                                     backgroundColor: "hsl(var(--card))",
@@ -416,6 +422,7 @@ export function Forecast() {
                 <ForecastSummaryTable
                     scenarioResults={scenarioResults}
                     colors={CHART_COLORS}
+                    ronEur={ronEur}
                 />
             )}
         </div>
@@ -619,6 +626,7 @@ interface ScenarioResultEntry {
 interface ForecastSummaryTableProps {
     scenarioResults: ScenarioResultEntry[];
     colors: string[];
+    ronEur: number | null;
 }
 
 /** RON formatter for table cells — always 2 decimal places */
@@ -631,7 +639,16 @@ function formatRONCell(value: number): string {
     }).format(value);
 }
 
-function ForecastSummaryTable({ scenarioResults, colors }: ForecastSummaryTableProps) {
+function formatEURCell(value: number): string {
+    return new Intl.NumberFormat("de-DE", {
+        style: "currency",
+        currency: "EUR",
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    }).format(value);
+}
+
+function ForecastSummaryTable({ scenarioResults, colors, ronEur }: ForecastSummaryTableProps) {
     // Span years from 1 to the maximum horizon across all scenarios
     const maxHorizon = Math.max(...scenarioResults.map((sr) => sr.scenario.horizonYears));
     const allYears = Array.from({ length: maxHorizon }, (_, i) => i + 1);
@@ -660,7 +677,7 @@ function ForecastSummaryTable({ scenarioResults, colors }: ForecastSummaryTableP
                                 <th
                                     key={sr.scenario.id}
                                     scope="colgroup"
-                                    colSpan={3}
+                                    colSpan={ronEur ? 6 : 3}
                                     className="border border-border px-3 py-2 text-center font-semibold whitespace-nowrap"
                                     style={{ color: colors[idx % colors.length] }}
                                 >
@@ -668,28 +685,16 @@ function ForecastSummaryTable({ scenarioResults, colors }: ForecastSummaryTableP
                                 </th>
                             ))}
                         </tr>
-                        {/* Sub-column headers */}
+                                                {/* Sub-column headers */}
                         <tr>
                             {scenarioResults.map((sr) => (
                                 <React.Fragment key={`sub-${sr.scenario.id}`}>
-                                    <th
-                                        scope="col"
-                                        className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap"
-                                    >
-                                        Projected Value
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap"
-                                    >
-                                        Total Contributions
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap"
-                                    >
-                                        Estimated Gain
-                                    </th>
+                                    <th scope="col" className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Projected (RON)</th>
+                                    {ronEur && <th scope="col" className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Projected (EUR)</th>}
+                                    <th scope="col" className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Contributions (RON)</th>
+                                    {ronEur && <th scope="col" className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Contributions (EUR)</th>}
+                                    <th scope="col" className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Est. Gain (RON)</th>
+                                    {ronEur && <th scope="col" className="border border-border px-3 py-2 text-right font-medium text-muted-foreground whitespace-nowrap">Est. Gain (EUR)</th>}
                                 </React.Fragment>
                             ))}
                         </tr>
@@ -709,42 +714,25 @@ function ForecastSummaryTable({ scenarioResults, colors }: ForecastSummaryTableP
                                     );
                                     if (!mark) {
                                         // Year is beyond this scenario's horizon — show dashes
-                                        return (
-                                            <React.Fragment key={`empty-${sr.scenario.id}-${year}`}>
-                                                <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">
-                                                    —
-                                                </td>
-                                                <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">
-                                                    —
-                                                </td>
-                                                <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">
-                                                    —
-                                                </td>
-                                            </React.Fragment>
-                                        );
+                                            return (
+                                                <React.Fragment key={`empty-${sr.scenario.id}-${year}`}>
+                                                    <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">—</td>
+                                                    {ronEur && <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">—</td>}
+                                                    <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">—</td>
+                                                    {ronEur && <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">—</td>}
+                                                    <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">—</td>
+                                                    {ronEur && <td className="border border-border px-3 py-2 text-right text-muted-foreground/50">—</td>}
+                                                </React.Fragment>
+                                            );
                                     }
                                     return (
                                         <React.Fragment key={`${sr.scenario.id}-${year}`}>
-                                            <td className="border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                                                {formatRONCell(mark.projectedValue)}
-                                            </td>
-                                            <td className="border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap">
-                                                {formatRONCell(mark.totalContributions)}
-                                            </td>
-                                            <td
-                                                className={[
-                                                    "border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap",
-                                                    mark.estimatedGain > 0
-                                                        ? "text-green-500"
-                                                        : mark.estimatedGain < 0
-                                                        ? "text-red-500"
-                                                        : "",
-                                                ]
-                                                    .filter(Boolean)
-                                                    .join(" ")}
-                                            >
-                                                {formatRONCell(mark.estimatedGain)}
-                                            </td>
+                                            <td className="border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatRONCell(mark.projectedValue)}</td>
+                                            {ronEur && <td className="border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatEURCell(mark.projectedValue / ronEur)}</td>}
+                                            <td className="border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatRONCell(mark.totalContributions)}</td>
+                                            {ronEur && <td className="border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap">{formatEURCell(mark.totalContributions / ronEur)}</td>}
+                                            <td className={["border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap", mark.estimatedGain > 0 ? "text-green-500" : mark.estimatedGain < 0 ? "text-red-500" : ""].filter(Boolean).join(" ")}>{formatRONCell(mark.estimatedGain)}</td>
+                                            {ronEur && <td className={["border border-border px-3 py-2 text-right tabular-nums whitespace-nowrap", mark.estimatedGain > 0 ? "text-green-500" : mark.estimatedGain < 0 ? "text-red-500" : ""].filter(Boolean).join(" ")}>{formatEURCell(mark.estimatedGain / ronEur)}</td>}
                                         </React.Fragment>
                                     );
                                 })}
