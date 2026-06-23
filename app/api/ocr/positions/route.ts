@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
         // otherwise fall back to system clock
         const snapshotDate = (formData.get('date') as string | null)?.match(/^\d{4}-\d{2}-\d{2}$/)
             ? formData.get('date') as string
-            : new Date().toISOString().split('T')[0];
+            : (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
 
         const errors: string[] = [];
         let updated = 0;

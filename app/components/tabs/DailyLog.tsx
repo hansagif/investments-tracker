@@ -55,7 +55,12 @@ const ACCEPTED_TYPES = new Set(["image/png", "image/jpg", "image/jpeg", "image/w
 const MAX_SIZE = 10 * 1024 * 1024;
 
 function today(): string {
-    return new Date().toISOString().split("T")[0];
+    // Use local date, not UTC — avoids off-by-one in timezones ahead of UTC
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
 }
 
 // ── RawOcrText debug panel ────────────────────────────────────────────────────
