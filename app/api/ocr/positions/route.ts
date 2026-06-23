@@ -90,6 +90,12 @@ export async function POST(request: NextRequest) {
             select: { ticker: true, name: true, sector: true, type: true, currency: true },
         });
 
+        // Resolve snapshot date once — use the form-supplied date if valid,
+        // otherwise fall back to system clock
+        const snapshotDate = (formData.get('date') as string | null)?.match(/^\d{4}-\d{2}-\d{2}$/)
+            ? formData.get('date') as string
+            : new Date().toISOString().split('T')[0];
+
         const errors: string[] = [];
         let updated = 0;
         const matchedTickers: string[] = [];
@@ -113,11 +119,6 @@ export async function POST(request: NextRequest) {
                     },
                 });
 
-                // Record snapshot for the entry date (not necessarily today —
-                // user may save a future-dated entry while it's still the previous day)
-                const snapshotDate = (formData.get('date') as string | null)?.match(/^\d{4}-\d{2}-\d{2}$/)
-                    ? formData.get('date') as string
-                    : new Date().toISOString().split('T')[0];
                 await prisma.assetSnapshot.upsert({
                     where: { date_ticker: { date: snapshotDate, ticker } },
                     update: {
@@ -151,6 +152,31 @@ export async function POST(request: NextRequest) {
             if (deleted.count > 0) {
                 errors.push(`Removed ${deleted.count} sold position(s) not found in screenshot.`);
             }
+        }
+
+        // Re-snapshot the full Asset table for this date now that all positions
+        // are updated. This overwrites the baseline snapshot written by daily-entry
+        // (which used pre-OCR values) with the fresh OCR values.
+        if (updated > 0) {
+            const freshAssets = await prisma.asset.findMany();
+            await Promise.allSettled(freshAssets.map(a =>
+                prisma.assetSnapshot.upsert({
+                    where: { date_ticker: { date: snapshotDate, ticker: a.ticker } },
+                    update: {
+                        currentValue: a.currentValue,
+                        currentPrice: a.currentPrice,
+                        avgBuyPrice: a.costBasis,
+                    },
+                    create: {
+                        date: snapshotDate,
+                        ticker: a.ticker,
+                        currentValue: a.currentValue,
+                        currentPrice: a.currentPrice,
+                        avgBuyPrice: a.costBasis,
+                    },
+                })
+            ));
+            log.info("ocr/positions", `re-snapshotted ${freshAssets.length} assets for ${snapshotDate}`);
         }
 
         return NextResponse.json({ updated, positions, errors });
