@@ -118,7 +118,7 @@ export async function scoreArticlesWithGemini(
 
     try {
         const genAI = new GoogleGenerativeAI(geminiToken);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         // Wrap the API call in a timeout-race so a slow response falls back gracefully
         const apiCall = model.generateContent(prompt);

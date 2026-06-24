@@ -119,9 +119,12 @@ async function readCache(): Promise<NewsArticle[] | null> {
     const ageMs = Date.now() - newest.cachedAt.getTime();
     if (ageMs >= CACHE_TTL_MS) return null;
 
-    // Cache is fresh — retrieve all cached articles ordered by score descending.
+    // Cache is fresh — retrieve only articles from the last 3 days, ordered by score.
+    const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1_000);
     const rows = await prisma.newsCache.findMany({
+        where: { publishedAt: { gte: cutoff } },
         orderBy: { score: "desc" },
+        take: 10,
     });
 
     return rows.map((row) => ({

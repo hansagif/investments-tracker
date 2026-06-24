@@ -97,7 +97,7 @@ export class GeminiBackend implements OCREngine {
 
         // Step 2: Initialise Gemini client and model
         const genAI = new GoogleGenerativeAI(this.apiToken);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         // Step 3: Build multimodal request with inline image data
         const result = await model.generateContent([

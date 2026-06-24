@@ -24,11 +24,14 @@ export const PRIORITY_KEYWORDS = [
     "Palantir defense contracts",
 ] as const;
 
-export const MAX_ARTICLES = 30;
+export const MAX_ARTICLES = 10;
 export const PRIORITY_BOOST = 20;
 
-/** Minutes in 24 hours — the recency decay window. */
-const DECAY_WINDOW_MINUTES = 24 * 60;
+/** Maximum article age in milliseconds — articles older than this are discarded. */
+export const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1_000; // 3 days
+
+/** Minutes in 72 hours — the recency decay window. */
+const DECAY_WINDOW_MINUTES = 72 * 60;
 
 /**
  * Compute a recency score in the range [0, 100].
@@ -67,10 +70,15 @@ export function rankArticles(
     // configured, surface all fetched articles rather than returning nothing.
     const lowerTickers = tickers.map((t) => t.toLowerCase());
 
+    // Discard articles older than MAX_AGE_MS
+    const recent = articles.filter(
+        (article) => now.getTime() - article.publishedAt.getTime() <= MAX_AGE_MS
+    );
+
     const filtered =
         lowerTickers.length === 0
-            ? articles
-            : articles.filter((article) => {
+            ? recent
+            : recent.filter((article) => {
                 const lowerHeadline = article.headline.toLowerCase();
                 return lowerTickers.some((ticker) => lowerHeadline.includes(ticker));
             });

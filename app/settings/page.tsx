@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/card";
 
 interface AppConfig {
-    ocrBackend: "tesseract" | "gemini";
     geminiApiToken: string;
     watchlist: string[];
     newsFeeds: string[];
@@ -25,7 +24,6 @@ interface AppConfig {
 }
 
 const DEFAULT_CONFIG: AppConfig = {
-    ocrBackend: "tesseract",
     geminiApiToken: "",
     watchlist: [],
     newsFeeds: ["https://feeds.finance.yahoo.com/rss/2.0/headline"],
@@ -53,9 +51,10 @@ export default function SettingsPage() {
                 const res = await fetch("/api/settings");
                 if (!res.ok) throw new Error(`Failed to load settings (${res.status})`);
                 const data: AppConfig = await res.json();
+                const { ocrBackend: _removed, ...rest } = data as AppConfig & { ocrBackend?: unknown };
                 setConfig({
                     ...DEFAULT_CONFIG,
-                    ...data,
+                    ...rest,
                     simulationDefaults: {
                         ...DEFAULT_CONFIG.simulationDefaults,
                         ...(data.simulationDefaults ?? {}),
@@ -162,56 +161,37 @@ export default function SettingsPage() {
                 {/* ── OCR Backend ── */}
                 <Card>
                     <CardHeader>
-                        <CardTitle className="text-base">OCR Backend</CardTitle>
+                        <CardTitle className="text-base">Gemini API Token</CardTitle>
                         <CardDescription>
-                            Choose how screenshots are parsed. Gemini provides higher accuracy but
-                            requires an API token.
+                            Required for OCR screenshot parsing, news ranking, and AI tips.
+                            Get your key at{" "}
+                            <a
+                                href="https://aistudio.google.com/app/apikey"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline"
+                            >
+                                aistudio.google.com
+                            </a>.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                        <fieldset>
-                            <legend className="sr-only">OCR Backend</legend>
-                            <div className="flex gap-6">
-                                {(["tesseract", "gemini"] as const).map((backend) => (
-                                    <label
-                                        key={backend}
-                                        className="flex items-center gap-2 cursor-pointer"
-                                    >
-                                        <input
-                                            type="radio"
-                                            name="ocrBackend"
-                                            value={backend}
-                                            checked={config.ocrBackend === backend}
-                                            onChange={() =>
-                                                setConfig((prev) => ({ ...prev, ocrBackend: backend }))
-                                            }
-                                            className="accent-primary"
-                                        />
-                                        <span className="text-sm capitalize">{backend}</span>
-                                    </label>
-                                ))}
-                            </div>
-                        </fieldset>
-
-                        {/* Gemini API Token — shown only when Gemini is selected */}
-                        {config.ocrBackend === "gemini" && (
-                            <div className="space-y-1.5 pt-2">
-                                <Label htmlFor="geminiApiToken">Gemini API Token</Label>
-                                <Input
-                                    id="geminiApiToken"
-                                    type="password"
-                                    autoComplete="off"
-                                    placeholder="AIza…"
-                                    value={config.geminiApiToken}
-                                    onChange={(e) =>
-                                        setConfig((prev) => ({
-                                            ...prev,
-                                            geminiApiToken: e.target.value,
-                                        }))
-                                    }
-                                />
-                            </div>
-                        )}
+                    <CardContent>
+                        <div className="space-y-1.5">
+                            <Label htmlFor="geminiApiToken">API Token</Label>
+                            <Input
+                                id="geminiApiToken"
+                                type="password"
+                                autoComplete="off"
+                                placeholder="AIza…"
+                                value={config.geminiApiToken}
+                                onChange={(e) =>
+                                    setConfig((prev) => ({
+                                        ...prev,
+                                        geminiApiToken: e.target.value,
+                                    }))
+                                }
+                            />
+                        </div>
                     </CardContent>
                 </Card>
 

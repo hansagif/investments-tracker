@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { TesseractBackend } from '@/lib/ocr/tesseract';
 import { GeminiBackend } from '@/lib/ocr/gemini';
 import fs from 'fs';
 import path from 'path';
@@ -37,13 +36,14 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Select backend based on config
-    let backend;
-    if (config.ocrBackend === 'gemini' && config.geminiApiToken) {
-        backend = new GeminiBackend(config.geminiApiToken);
-    } else {
-        backend = new TesseractBackend();
+    if (!config.geminiApiToken) {
+        return NextResponse.json(
+            { error: 'Gemini API token is not configured. Add it in Settings.' },
+            { status: 503 }
+        );
     }
+
+    const backend = new GeminiBackend(config.geminiApiToken);
 
     try {
         const result = await backend.parse(buffer, file.type);
