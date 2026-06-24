@@ -8,9 +8,12 @@
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { withGeminiRetry } from "@/lib/gemini-retry";
 
 export interface ExtractedPosition {
     name: string;
+    /** Stock ticker symbol e.g. "MA", "NVDA" */
+    ticker: string | null;
     /** Total current USD value — Valoare column */
     currentValue: number;
     /** Number of shares — Volum column */
@@ -39,6 +42,7 @@ Extract every row and return ONLY a JSON array with no extra text:
 [
   {
     "name": "Nvidia",
+    "ticker": "NVDA",
     "currentValue": 120.60,
     "avgBuyPrice": 217.45,
     "currentPrice": 205.56,
@@ -48,12 +52,13 @@ Extract every row and return ONLY a JSON array with no extra text:
 ]
 
 Rules:
+- "ticker" = the standard stock exchange ticker symbol (e.g. "MA" for Mastercard, "NVDA" for Nvidia)
 - "currentValue" = number from "Valoare" column
 - "avgBuyPrice" = number from "Pret deschidere" column  
 - "currentPrice" = number from "Pret actual" column
 - "volume" = number from "Volum" column
 - "profitNet" = number from "Profit net" column (negative for losses)
-- ALL fields must be numbers, not strings
+- ALL numeric fields must be numbers, not strings
 - Return ONLY the JSON array, nothing else`;
 
 function stripCodeFences(text: string): string {
@@ -80,7 +85,7 @@ export async function extractPositions(
     const genAI = new GoogleGenerativeAI(apiToken);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-    const result = await model.generateContent([
+    const result = await withGeminiRetry(() => model.generateContent([
         {
             inlineData: {
                 data: imageBuffer.toString("base64"),
@@ -88,7 +93,7 @@ export async function extractPositions(
             },
         },
         POSITIONS_PROMPT,
-    ]);
+    ]));
 
     const raw = result.response.text();
     const clean = stripCodeFences(raw);
@@ -108,6 +113,7 @@ export async function extractPositions(
                 : null;
             return {
                 name: String(p.name),
+                ticker: typeof p.ticker === "string" ? p.ticker.toUpperCase().trim() : null,
                 currentValue: Number(p.currentValue),
                 volume,
                 avgBuyPrice,

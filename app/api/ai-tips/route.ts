@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { withGeminiRetry } from '@/lib/gemini-retry';
 import fs from 'fs';
 import path from 'path';
 
@@ -79,7 +80,7 @@ Rules:
 
         const genAI = new GoogleGenerativeAI(apiToken);
         const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-        const result = await model.generateContent(prompt);
+        const result = await withGeminiRetry(() => model.generateContent(prompt));
         const raw = result.response.text().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
         const tips = JSON.parse(raw);

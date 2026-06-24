@@ -14,6 +14,7 @@
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { withGeminiRetry } from "@/lib/gemini-retry";
 import type { NewsArticle } from "./types";
 
 // Maximum number of articles processed in a single Gemini call.
@@ -121,7 +122,7 @@ export async function scoreArticlesWithGemini(
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         // Wrap the API call in a timeout-race so a slow response falls back gracefully
-        const apiCall = model.generateContent(prompt);
+        const apiCall = withGeminiRetry(() => model.generateContent(prompt));
         const timeoutPromise = new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error("Gemini request timed out")), REQUEST_TIMEOUT_MS)
         );

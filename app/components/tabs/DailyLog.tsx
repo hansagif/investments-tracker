@@ -132,6 +132,8 @@ export function DailyLog() {
     const [saveStatus, setSaveStatus] = React.useState<"idle" | "saving" | "success" | "conflict" | "error">("idle");
     const [saveError, setSaveError] = React.useState<string | null>(null);
     const [positionsUpdated, setPositionsUpdated] = React.useState<number | null>(null);
+    const [positionsStatus, setPositionsStatus] = React.useState<"idle" | "loading" | "success" | "error">("idle");
+    const [positionsError, setPositionsError] = React.useState<string | null>(null);
     const [pendingFile, setPendingFile] = React.useState<File | null>(null);
 
     const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -290,20 +292,37 @@ export function DailyLog() {
             // Run positions extraction (updates Asset table + AssetSnapshot),
             // then trigger refresh so LiveDashboard sees fully-updated data.
             if (pendingFile) {
-                const fd = new FormData();
-                fd.append("image", pendingFile);
-                fd.append("date", date); // pass entry date so snapshot uses the right day, not system clock
-                try {
-                    const r = await fetch("/api/ocr/positions", { method: "POST", body: fd });
-                    const d: { updated: number } = await r.json();
-                    if (d.updated > 0) setPositionsUpdated(d.updated);
-                } catch { /* best-effort, don't block refresh */ }
+                await runPositionsExtraction(pendingFile, date);
+            } else {
+                triggerRefresh();
             }
-
-            triggerRefresh(); // signal all other tabs to re-fetch (after positions are written)
         } catch {
             setSaveStatus("error");
             setSaveError("Network error — could not reach the server.");
+        }
+    }
+
+    async function runPositionsExtraction(file: File, entryDate: string) {
+        setPositionsStatus("loading");
+        setPositionsError(null);
+        try {
+            const fd = new FormData();
+            fd.append("image", file);
+            fd.append("date", entryDate);
+            const r = await fetch("/api/ocr/positions", { method: "POST", body: fd });
+            const d = await r.json();
+            if (!r.ok) {
+                setPositionsStatus("error");
+                setPositionsError(d.error ?? `Positions update failed (${r.status})`);
+                return;
+            }
+            setPositionsUpdated(d.updated ?? 0);
+            setPositionsStatus("success");
+        } catch {
+            setPositionsStatus("error");
+            setPositionsError("Network error — positions not updated.");
+        } finally {
+            triggerRefresh();
         }
     }
 
@@ -500,7 +519,29 @@ export function DailyLog() {
                     </div>
                 )}
                 {saveStatus === "success" && (
-                    <p role="status" className="text-sm text-green-400">✓ Entry saved for {date}</p>
+                    <div className="space-y-1">
+                        <p role="status" className="text-sm text-green-400">✓ Entry saved for {date}</p>
+                        {positionsStatus === "loading" && (
+                            <p className="text-sm text-muted-foreground">Updating stock positions…</p>
+                        )}
+                        {positionsStatus === "success" && (
+                            <p className="text-sm text-green-400">✓ {positionsUpdated} position{positionsUpdated !== 1 ? "s" : ""} updated</p>
+                        )}
+                        {positionsStatus === "error" && (
+                            <div className="flex items-center gap-3">
+                                <p className="text-sm text-destructive">{positionsError}</p>
+                                {pendingFile && (
+                                    <button
+                                        type="button"
+                                        className="text-sm underline text-muted-foreground hover:text-foreground"
+                                        onClick={() => runPositionsExtraction(pendingFile, date)}
+                                    >
+                                        Retry positions
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 )}
                 {saveStatus === "error" && saveError && (
                     <p role="alert" className="text-sm text-destructive">{saveError}</p>

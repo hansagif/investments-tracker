@@ -9,7 +9,7 @@
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { OCREngine, ParsedSnapshot } from "./types";
+import { withGeminiRetry } from "@/lib/gemini-retry";
 import { validateOCRRange, RANGE_MIN, RANGE_MAX } from "./tesseract";
 
 // Re-export so callers that only import the Gemini module can access the constants.
@@ -100,7 +100,7 @@ export class GeminiBackend implements OCREngine {
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         // Step 3: Build multimodal request with inline image data
-        const result = await model.generateContent([
+        const result = await withGeminiRetry(() => model.generateContent([
             {
                 inlineData: {
                     data: base64Image,
@@ -108,7 +108,7 @@ export class GeminiBackend implements OCREngine {
                 },
             },
             EXTRACTION_PROMPT,
-        ]);
+        ]));
 
         const responseText = result.response.text();
 

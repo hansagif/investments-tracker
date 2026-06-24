@@ -101,7 +101,8 @@ export async function POST(request: NextRequest) {
         const matchedTickers: string[] = [];
 
         for (const pos of positions) {
-            const ticker = matchToTicker(pos.name, existingAssets);
+            // Prefer the ticker Gemini extracted directly, fall back to name matching
+            const ticker = pos.ticker ?? matchToTicker(pos.name, existingAssets);
 
             if (!ticker) {
                 errors.push(`Could not match "${pos.name}" to any known ticker — skipped.`);
@@ -110,14 +111,35 @@ export async function POST(request: NextRequest) {
             }
 
             try {
-                await prisma.asset.update({
-                    where: { ticker },
-                    data: {
-                        currentValue: pos.currentValue,
-                        ...(pos.avgBuyPrice !== null && { costBasis: pos.avgBuyPrice }),
-                        ...(pos.currentPrice !== null && { currentPrice: pos.currentPrice }),
-                    },
-                });
+                const assetExists = existingAssets.some(a => a.ticker === ticker);
+
+                if (!assetExists) {
+                    // New position seen for the first time — auto-create it
+                    await prisma.asset.create({
+                        data: {
+                            ticker,
+                            name: pos.name,
+                            type: "Stock",
+                            sector: "Other",
+                            currency: "USD",
+                            currentValue: pos.currentValue,
+                            costBasis: pos.avgBuyPrice ?? 0,
+                            currentPrice: pos.currentPrice ?? 0,
+                        },
+                    });
+                    // Add to existingAssets so deleteMany doesn't remove it
+                    existingAssets.push({ ticker, name: pos.name, sector: "Other", type: "Stock", currency: "USD" });
+                    log.info("ocr/positions", `created new asset ${ticker} (${pos.name})`);
+                } else {
+                    await prisma.asset.update({
+                        where: { ticker },
+                        data: {
+                            currentValue: pos.currentValue,
+                            ...(pos.avgBuyPrice !== null && { costBasis: pos.avgBuyPrice }),
+                            ...(pos.currentPrice !== null && { currentPrice: pos.currentPrice }),
+                        },
+                    });
+                }
 
                 await prisma.assetSnapshot.upsert({
                     where: { date_ticker: { date: snapshotDate, ticker } },
