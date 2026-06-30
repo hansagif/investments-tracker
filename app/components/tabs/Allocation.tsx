@@ -183,7 +183,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
     return <span className="ml-1 text-[10px]">{dir === "asc" ? "↑" : "↓"}</span>;
 }
 
-function AssetPositionList({ assets, lastUpdated }: { assets: Asset[]; lastUpdated?: string }) {
+function AssetPositionList({ assets, lastUpdated, freeFunds }: { assets: Asset[]; lastUpdated?: string; freeFunds?: number }) {
     const [sort, setSort] = React.useState<SortState>({ key: "pnl", dir: "asc" });
 
     function toggle(key: SortKey) {
@@ -255,6 +255,7 @@ function AssetPositionList({ assets, lastUpdated }: { assets: Asset[]; lastUpdat
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="border-b border-border bg-muted/40">
+                            <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground w-8">#</th>
                             <Th label="Ticker" k="ticker" align="left" />
                             <Th label="Name" k="name" align="left" />
                             <Th label="Sector" k="sector" align="left" />
@@ -266,11 +267,12 @@ function AssetPositionList({ assets, lastUpdated }: { assets: Asset[]; lastUpdat
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((row) => {
+                        {rows.map((row, i) => {
                             const pnlColor = row.pnl > 0 ? "text-green-400" : row.pnl < 0 ? "text-red-400" : "text-muted-foreground";
                             const sign = row.pnl > 0 ? "+" : "";
                             return (
                                 <tr key={row.ticker} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                                    <td className="px-3 py-3 text-right text-xs text-muted-foreground">{i + 1}</td>
                                     <td className="px-4 py-3 font-mono font-semibold text-foreground">{row.ticker}</td>
                                     <td className="px-4 py-3 text-foreground/70 text-xs">{row.name || "—"}</td>
                                     <td className="px-4 py-3 text-foreground/80">{row.sector}</td>
@@ -291,6 +293,7 @@ function AssetPositionList({ assets, lastUpdated }: { assets: Asset[]; lastUpdat
                     </tbody>
                     <tfoot>
                         <tr className="border-t-2 border-border bg-muted/20 font-semibold">
+                            <td className="px-3 py-3" />
                             <td className="px-4 py-3 text-foreground" colSpan={3}>Total</td>
                             <td className="px-4 py-3 text-right font-mono text-foreground">${totalCurrent.toFixed(2)}</td>
                             <td colSpan={2} />
@@ -301,6 +304,22 @@ function AssetPositionList({ assets, lastUpdated }: { assets: Asset[]; lastUpdat
                                 {totalPnl > 0 ? "+" : ""}{totalPnlPct.toFixed(2)}%
                             </td>
                         </tr>
+                        {freeFunds !== undefined && freeFunds > 0 && (
+                            <>
+                                <tr className="border-t border-border bg-muted/10 text-muted-foreground">
+                                    <td className="px-3 py-2" />
+                                    <td className="px-4 py-2 text-sm" colSpan={3}>Free cash (USD)</td>
+                                    <td className="px-4 py-2 text-right font-mono text-sm">${freeFunds.toFixed(2)}</td>
+                                    <td colSpan={4} />
+                                </tr>
+                                <tr className="border-t border-border bg-muted/20 font-semibold">
+                                    <td className="px-3 py-2" />
+                                    <td className="px-4 py-2 text-foreground text-sm" colSpan={3}>Total incl. cash</td>
+                                    <td className="px-4 py-2 text-right font-mono text-sm text-foreground">${(totalCurrent + freeFunds).toFixed(2)}</td>
+                                    <td colSpan={4} />
+                                </tr>
+                            </>
+                        )}
                     </tfoot>
                 </table>
             </div>
@@ -415,6 +434,7 @@ export function Allocation() {
     const [assets, setAssets] = React.useState<Asset[] | null>(null);
     const [lastUpdated, setLastUpdated] = React.useState<string | undefined>();
     const [error, setError] = React.useState<string | null>(null);
+    const [freeFunds, setFreeFunds] = React.useState<number | undefined>();
 
     // Date navigation — available snapshot dates + selected index
     const [availableDates, setAvailableDates] = React.useState<string[]>([]);
@@ -435,6 +455,20 @@ export function Allocation() {
 
     const selectedDate = dateIdx !== null ? availableDates[dateIdx] : null;
     const isCurrentView = dateIdx === null;
+
+    // Fetch free funds from daily entry for the selected date (or latest)
+    React.useEffect(() => {
+        fetch("/api/daily-entry")
+            .then(r => r.json())
+            .then((entries: { date: string; usdFreeFunds: number }[]) => {
+                if (!entries.length) return;
+                const match = selectedDate
+                    ? entries.find(e => e.date === selectedDate)
+                    : entries[0];
+                setFreeFunds(match?.usdFreeFunds);
+            })
+            .catch(() => { });
+    }, [selectedDate, refreshCount]);
 
     const loadAssets = React.useCallback(() => {
         setAssets(null);
@@ -465,7 +499,7 @@ export function Allocation() {
             .catch((err: unknown) => {
                 setError(err instanceof Error ? err.message : "Failed to load assets");
             });
-    }, [selectedDate]);
+    }, [selectedDate, refreshCount]);
 
     React.useEffect(() => {
         loadAssets();
@@ -561,7 +595,7 @@ export function Allocation() {
                     )}
                 </div>
             )}
-            <AssetPositionList assets={assets!} lastUpdated={lastUpdated} />
+            <AssetPositionList assets={assets!} lastUpdated={lastUpdated} freeFunds={freeFunds} />
             {isCurrentView && <AiTips />}
         </section>
     );
